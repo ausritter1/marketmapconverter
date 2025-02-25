@@ -7,18 +7,21 @@ from PIL import Image
 import io
 import time
 import logging
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, filename="crunchbase_api.log", filemode="a",
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Get API keys from environment variables
-api_key = os.getenv("OPENAI_API_KEY")
-crunchbase_api_key = os.getenv("CRUNCHBASE_API_KEY")
+# Get API keys from Streamlit secrets
+try:
+    api_key = st.secrets["OPENAI_API_KEY"]
+except:
+    api_key = None
+
+try:
+    crunchbase_api_key = st.secrets["CRUNCHBASE_API_KEY"]
+except:
+    crunchbase_api_key = None
 
 # Function to encode the image
 def encode_image(image):
@@ -133,16 +136,18 @@ def main():
     st.title("Startup Market Map to CSV Converter")
     st.write("Upload an image of a startup market map to convert it into a CSV file.")
 
-    # Add input fields for API keys if not set in environment
+    # Add input fields for API keys if not set in secrets
     if not api_key:
         user_api_key = st.text_input("Enter your OpenAI API Key", type="password")
         if user_api_key:
             os.environ["OPENAI_API_KEY"] = user_api_key
+            api_key = user_api_key
     
     if not crunchbase_api_key:
         user_crunchbase_key = st.text_input("Enter your Crunchbase API Key", type="password")
         if user_crunchbase_key:
             os.environ["CRUNCHBASE_API_KEY"] = user_crunchbase_key
+            crunchbase_api_key = user_crunchbase_key
 
     uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
 
@@ -152,11 +157,14 @@ def main():
 
         if st.button("Extract Startups"):
             # Check if API keys are available
-            if not os.getenv("OPENAI_API_KEY"):
+            current_api_key = api_key or os.environ.get("OPENAI_API_KEY")
+            current_crunchbase_key = crunchbase_api_key or os.environ.get("CRUNCHBASE_API_KEY")
+            
+            if not current_api_key:
                 st.error("OpenAI API key is required.")
                 return
             
-            if not os.getenv("CRUNCHBASE_API_KEY"):
+            if not current_crunchbase_key:
                 st.error("Crunchbase API key is required.")
                 return
                 
