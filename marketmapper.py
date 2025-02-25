@@ -12,17 +12,6 @@ import logging
 logging.basicConfig(level=logging.INFO, filename="crunchbase_api.log", filemode="a",
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Get API keys from Streamlit secrets
-try:
-    api_key = st.secrets["OPENAI_API_KEY"]
-except:
-    api_key = None
-
-try:
-    crunchbase_api_key = st.secrets["CRUNCHBASE_API_KEY"]
-except:
-    crunchbase_api_key = None
-
 # Function to encode the image
 def encode_image(image):
     if image.mode in ('RGBA', 'P'):
@@ -33,7 +22,7 @@ def encode_image(image):
 
 
 # Function to get CSV from the market map using OpenAI API
-def get_csv_from_image(image):
+def get_csv_from_image(image, api_key):
     base64_image = encode_image(image)
 
     headers = {
@@ -69,7 +58,7 @@ def get_csv_from_image(image):
 
 
 # Function to get Crunchbase data for a startup with retry logic and rate limiting
-def get_crunchbase_data(startup_name):
+def get_crunchbase_data(startup_name, crunchbase_api_key):
     search_url = f'https://api.crunchbase.com/api/v4/autocompletes?query={startup_name}'
     headers = {
         'accept': 'application/json',
@@ -136,6 +125,22 @@ def main():
     st.title("Startup Market Map to CSV Converter")
     st.write("Upload an image of a startup market map to convert it into a CSV file.")
 
+    # Get API keys from Streamlit secrets
+    api_key = None
+    crunchbase_api_key = None
+
+    try:
+        api_key = st.secrets["OPENAI_API_KEY"]
+    except Exception as e:
+        logging.info(f"No OpenAI API key found in secrets: {e}")
+        pass
+
+    try:
+        crunchbase_api_key = st.secrets["CRUNCHBASE_API_KEY"]
+    except Exception as e:
+        logging.info(f"No Crunchbase API key found in secrets: {e}")
+        pass
+
     # Add input fields for API keys if not set in secrets
     if not api_key:
         user_api_key = st.text_input("Enter your OpenAI API Key", type="password")
@@ -157,18 +162,15 @@ def main():
 
         if st.button("Extract Startups"):
             # Check if API keys are available
-            current_api_key = api_key or os.environ.get("OPENAI_API_KEY")
-            current_crunchbase_key = crunchbase_api_key or os.environ.get("CRUNCHBASE_API_KEY")
-            
-            if not current_api_key:
+            if not api_key:
                 st.error("OpenAI API key is required.")
                 return
             
-            if not current_crunchbase_key:
+            if not crunchbase_api_key:
                 st.error("Crunchbase API key is required.")
                 return
                 
-            result = get_csv_from_image(image)
+            result = get_csv_from_image(image, api_key)
 
             # Try to extract the CSV content from the response
             try:
@@ -182,7 +184,7 @@ def main():
 
                 enriched_data = []
                 for name in startups:
-                    crunchbase_data = get_crunchbase_data(name)
+                    crunchbase_data = get_crunchbase_data(name, crunchbase_api_key)
                     enriched_data.append({
                         'Startup Name': name,
                         'Website URL': crunchbase_data['Website URL'],
