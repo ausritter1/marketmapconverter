@@ -12,6 +12,23 @@ import logging
 logging.basicConfig(level=logging.INFO, filename="crunchbase_api.log", filemode="a",
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
+# Set page configuration
+st.set_page_config(
+    page_title="RBV Market Map Converter",
+    layout="wide",
+    page_icon="📊"
+)
+
+# Try to load and display RBV logo
+try:
+    logo = Image.open("logo.png")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image(logo, width=150)
+except FileNotFoundError:
+    # If logo file not found, just continue
+    pass
+
 # Function to encode the image
 def encode_image(image):
     if image.mode in ('RGBA', 'P'):
@@ -122,8 +139,8 @@ def get_crunchbase_data(startup_name, crunchbase_api_key):
 
 # Streamlit app
 def main():
-    st.title("Startup Market Map to CSV Converter")
-    st.write("Upload an image of a startup market map to convert it into a CSV file.")
+    st.title("Red Beard Ventures Market Map to CSV Converter")
+    st.write("Upload an image of a startup market map to convert it into a CSV file with enriched data.")
 
     # Get API keys from Streamlit secrets
     api_key = None
@@ -158,7 +175,7 @@ def main():
 
     if uploaded_file is not None:
         image = Image.open(uploaded_file)
-        st.image(image, caption='Uploaded Image', use_column_width=True)
+        st.image(image, caption='Uploaded Market Map', use_column_width=True)
 
         if st.button("Extract Startups"):
             # Check if API keys are available
@@ -169,41 +186,57 @@ def main():
             if not crunchbase_api_key:
                 st.error("Crunchbase API key is required.")
                 return
-                
-            result = get_csv_from_image(image, api_key)
+            
+            with st.spinner("Processing image and extracting startups..."):
+                result = get_csv_from_image(image, api_key)
 
-            # Try to extract the CSV content from the response
-            try:
-                csv_content = result['choices'][0]['message']['content']
-                startup_lines = csv_content.strip().split('\n')
+                # Try to extract the CSV content from the response
+                try:
+                    csv_content = result['choices'][0]['message']['content']
+                    startup_lines = csv_content.strip().split('\n')
 
-                # Filter out unwanted lines and ensure valid startup names
-                startups = [line.split(',')[1].strip() for line in startup_lines if
-                            ',' in line and len(line.split(',')) == 2 and not any(
-                                word in line.lower() for word in ("here is", "startup", "categorized"))]
+                    # Filter out unwanted lines and ensure valid startup names
+                    startups = [line.split(',')[1].strip() for line in startup_lines if
+                                ',' in line and len(line.split(',')) == 2 and not any(
+                                    word in line.lower() for word in ("here is", "startup", "categorized"))]
 
-                enriched_data = []
-                for name in startups:
-                    crunchbase_data = get_crunchbase_data(name, crunchbase_api_key)
-                    enriched_data.append({
-                        'Startup Name': name,
-                        'Website URL': crunchbase_data['Website URL'],
-                        'LinkedIn': crunchbase_data['LinkedIn'],
-                        'Short Description': crunchbase_data['Short Description']
-                    })
+                    # Show progress for Crunchbase lookups
+                    st.write(f"Found {len(startups)} startups. Enriching data from Crunchbase...")
+                    progress_bar = st.progress(0)
+                    
+                    enriched_data = []
+                    for i, name in enumerate(startups):
+                        st.write(f"Looking up: {name}")
+                        crunchbase_data = get_crunchbase_data(name, crunchbase_api_key)
+                        enriched_data.append({
+                            'Startup Name': name,
+                            'Website URL': crunchbase_data['Website URL'],
+                            'LinkedIn': crunchbase_data['LinkedIn'],
+                            'Short Description': crunchbase_data['Short Description']
+                        })
+                        progress_bar.progress((i + 1) / len(startups))
 
-                df = pd.DataFrame(enriched_data)
-                csv = df.to_csv(index=False).encode('utf-8')
+                    df = pd.DataFrame(enriched_data)
+                    
+                    # Display the enriched data
+                    st.subheader("Enriched Startup Data")
+                    st.dataframe(df)
+                    
+                    # Provide download option
+                    csv = df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Enriched CSV",
+                        data=csv,
+                        file_name='rbv_enriched_market_map.csv',
+                        mime='text/csv'
+                    )
+                except KeyError as e:
+                    st.error(f"Error extracting CSV content: {e}")
+                    st.json(result)  # Display the full JSON response for debugging
 
-                st.download_button(
-                    label="Download Enriched CSV",
-                    data=csv,
-                    file_name='enriched_market_map.csv',
-                    mime='text/csv'
-                )
-            except KeyError as e:
-                st.error(f"Error extracting CSV content: {e}")
-                st.json(result)  # Display the full JSON response for debugging
+    # Footer
+    st.markdown("---")
+    st.caption("Red Beard Ventures © 2025")
 
 
 if __name__ == "__main__":
